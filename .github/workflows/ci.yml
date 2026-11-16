@@ -1,0 +1,33 @@
+# Self-test on every push to main and on pull requests: the templates agree with versions.toml,
+# and the checker passes a conforming fixture and FAILS every deliberately wrong one.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: self-check & tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - "ubuntu-${{ vars.VYGES_UBUNTU_VERSION || '24.04' }}"
+          - "macos-${{ vars.VYGES_MACOS_VERSION || '15' }}"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Python version (tomllib needs 3.11+)
+        run: python3 -c 'import sys, tomllib; print(sys.version)'
+      - name: Templates agree with versions.toml; own workflows conform
+        run: python3 scripts/check.py --self
+      - name: Checker tests (each rule must fail on a wrong input)
+        run: python3 -m unittest discover -s tests -v
+      - name: Shell syntax
+        run: bash -n scripts/sync-org-vars.sh

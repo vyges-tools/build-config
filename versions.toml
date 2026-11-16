@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: Apache-2.0
+# The one place the build versions are written down. Every other file in this repository, and the
+# checker's verdict on a consuming repository, is derived from or compared against these values.
+# Change a value here, then run `scripts/check.py --self` (the templates must agree) and
+# `scripts/sync-org-vars.sh` (the CI organisation variables must agree).
+
+schema = 1
+
+[rust]
+# rustc for CI, release builds and local builds. rust-toolchain.toml in each repository and every
+# `dtolnay/rust-toolchain@<version>` step must name exactly this.
+toolchain = "1.100.0"
+components = ["clippy"]
+
+[cxx]
+# C++ language standard for every C++ translation unit we compile (Bazel cxxopt, CMake, cc shims).
+# Abseil is built inside each library and must share its consumers' standard.
+standard = "c++20"
+# Optimisation level for C/C++ we compile; the reference builds its C++ at -O3 too.
+opt_level = "O3"
+# Floating-point contraction. `off` keeps a*b+c as two roundings on every target (see README).
+fp_contract = "off"
+# Flags that may never reach a C/C++ compile we run: each can change a computed value.
+forbidden_flags = [
+  "-march=", "-mcpu=", "-ffast-math", "-Ofast", "-funsafe-math-optimizations",
+  "-ffp-model=fast", "-fassociative-math", "-freciprocal-math", "-ffp-contract=fast",
+  "-ffp-contract=on",
+]
+
+[bazel]
+# .bazelversion in each Bazel-built library, and the bazelisk release CI downloads.
+version = "9.1.1"
+bazelisk = "1.25.0"
+
+[macos]
+# Oldest macOS our native libraries are built to run on (Bazel --macos_minimum_os,
+# CMake CMAKE_OSX_DEPLOYMENT_TARGET).
+minimum = "13.3"
+
+[ci]
+# GitHub-hosted runner OS versions. Workflows never name these directly: they read the
+# organisation variables below, with this value as the fallback, e.g.
+#   runs-on: ubuntu-${{ vars.VYGES_UBUNTU_VERSION || '24.04' }}
+#   runs-on: macos-${{ vars.VYGES_MACOS_VERSION || '15' }}
+ubuntu = "24.04"
+macos = "15"
+ubuntu_var = "VYGES_UBUNTU_VERSION"
+macos_var = "VYGES_MACOS_VERSION"
+# Organisations whose variables scripts/sync-org-vars.sh keeps equal to the values above.
+orgs = ["vyges-tools", "vyges", "vyges-ip"]
+
+[ci.test_profile_override]
+# A CI `cargo test --release` step may trade the shipped profile for build time with these exact
+# environment values. Release and bundle steps keep the shipped profile (no override).
+CARGO_PROFILE_RELEASE_LTO = "false"
+CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "16"
+
+[mimalloc]
+# Global allocator of our binaries (never a library default). Pinned exactly: libmimalloc-sys
+# 0.1.44 bundles mimalloc v2; later releases default to v3.
+mimalloc = "0.1.48"
+libmimalloc-sys = "0.1.44"

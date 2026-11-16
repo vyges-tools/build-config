@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+# Canonical Cargo release profile. Cargo cannot import a profile from another file and reads
+# profiles only from the root of the build, so every repository that builds a binary carries
+# this table verbatim in its Cargo.toml, and scripts/check.py compares the two key by key.
+#
+# None of these settings can change a computed value: rustc never reassociates or contracts
+# floating-point operations at any optimisation level. They trade build time for run time only,
+# and each was adopted with a before-and-after gate showing identical outputs.
+#
+#   lto = "fat"          whole-program optimisation across all crates; measurably faster than thin
+#                        on our largest runs, at the cost of build time (not memory).
+#   codegen-units = 1    one unit per crate, so the optimiser sees every function together.
+#
+# Deliberately NOT here: panic = "abort" (it disables catch_unwind, which our tools use to keep
+# going past a bad input), and any target-cpu (a dependency may pick a SIMD path that sums in a
+# different order). CI test steps may override this profile for build time only with the exact
+# environment values in versions.toml [ci.test_profile_override].
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
