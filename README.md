@@ -101,6 +101,11 @@ repository only when that repository moves its pin.
   Changing a runner version is: edit `versions.toml`, run `scripts/sync-org-vars.sh --apply`,
   then update the fallbacks (the checker lists every one that disagrees).
 
+## Exemptions
+
+`versions.toml` lists, under `[[exemption]]`, the repositories deliberately left out, each with
+its reason and date. Remove an entry when its repository is brought in line.
+
 ## Changing a value
 
 1. Edit `versions.toml` and the template that carries the value.

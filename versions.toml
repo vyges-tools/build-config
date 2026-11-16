@@ -67,7 +67,8 @@ ubuntu = "24.04"
 macos = "15"
 ubuntu_var = "VYGES_UBUNTU_VERSION"
 macos_var = "VYGES_MACOS_VERSION"
-# Organisations whose variables scripts/sync-org-vars.sh keeps equal to the values above.
+# Organisations whose variables scripts/sync-org-vars.sh keeps equal to the values above. Further
+# organisations (for example private ones) are passed at run time in VYGES_EXTRA_ORGS.
 orgs = ["vyges-tools", "vyges", "vyges-ip"]
 
 [ci.test_profile_override]
@@ -81,3 +82,16 @@ CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "16"
 # 0.1.44 bundles mimalloc v2; later releases default to v3.
 mimalloc = "0.1.48"
 libmimalloc-sys = "0.1.44"
+
+# Repositories deliberately NOT brought in line, each with its reason. The checker is not run on
+# them in CI; listed so a sweep does not "fix" them by accident. Remove an entry when its repo is
+# brought in line.
+[[exemption]]
+repo = "vyges/programmable-adc"
+since = "2026-11-16"
+reason = "Runs on ubuntu-22.04 on purpose: its setup job installs the KLayout ubuntu22_04 .deb. Left as is until the repo is reworked."
+
+[[exemption]]
+repo = "vyges/vyges-ip-template"
+since = "2026-11-16"
+reason = "Deprecated; hard-coded ubuntu-24.04 runner left as is."

@@ -9,6 +9,9 @@
 #                                       equal versions.toml, marked `same` or `DIFFERS`.
 #   scripts/sync-org-vars.sh --apply    run the commands for the variables that differ.
 #
+# Env: VYGES_EXTRA_ORGS  space-separated organisations to cover in addition to versions.toml
+#                        [ci] orgs (for organisations not named in this public repository).
+#
 # Needs the GitHub CLI authenticated with permission to read (and, for --apply, write)
 # organisation variables. Exit: 0 all equal (or applied), 1 a variable differs in a dry run or
 # could not be read, 2 bad arguments.
@@ -25,10 +28,10 @@ esac
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # "org name value" lines from versions.toml (python3 >= 3.11 for tomllib). Plain loops, no
 # mapfile, so the stock macOS bash 3.2 runs this too.
-plan=$(python3 - "$root/versions.toml" <<'PY'
+plan=$(python3 - "$root/versions.toml" "${VYGES_EXTRA_ORGS:-}" <<'PY'
 import sys, tomllib
 ci = tomllib.load(open(sys.argv[1], "rb"))["ci"]
-for org in ci["orgs"]:
+for org in ci["orgs"] + sys.argv[2].split():
     print(org, ci["ubuntu_var"], ci["ubuntu"])
     print(org, ci["macos_var"], ci["macos"])
 PY
