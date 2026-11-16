@@ -36,11 +36,12 @@ bazelisk = "1.25.0"
 
 [macos]
 # Oldest macOS our native libraries are built to run on (Bazel --macos_minimum_os,
-# CMake CMAKE_OSX_DEPLOYMENT_TARGET).
-minimum = "13.3"
-# Whether a CMake library must set CMAKE_OSX_DEPLOYMENT_TARGET. False while the minimum itself is
-# under review: a CMakeLists.txt that sets it must still agree with `minimum`.
-cmake_target_required = false
+# CMake CMAKE_OSX_DEPLOYMENT_TARGET). Equal to the only macOS runner we build and test on, so no
+# shipped binary claims support for a release nothing has run it on. (Was 13.3 until 2026-11-16.)
+minimum = "15.0"
+# Whether a CMake library must set CMAKE_OSX_DEPLOYMENT_TARGET (a CMakeLists.txt that sets it
+# must agree with `minimum` either way).
+cmake_target_required = true
 
 [cargo]
 # Packages whose binaries we ship as release bundles. Only these may add the keys below to the

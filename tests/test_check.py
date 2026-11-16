@@ -14,11 +14,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CHECK = ROOT / "scripts" / "check.py"
+MACOS_MIN = tomllib.loads((ROOT / "versions.toml").read_text())["macos"]["minimum"]
 
 
 def run(*args: str) -> subprocess.CompletedProcess:
@@ -65,7 +67,7 @@ libmimalloc-sys = {{ version = "=0.1.44", default-features = false, features = [
     else:
         write(dest / "CMakeLists.txt", """cmake_minimum_required(VERSION 3.20)
 if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-  set(CMAKE_OSX_DEPLOYMENT_TARGET 13.3)
+  set(CMAKE_OSX_DEPLOYMENT_TARGET @MACOS_MIN@)
 endif()
 project(fixture LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
@@ -75,7 +77,7 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 add_compile_options(-ffp-contract=off)
-""")
+""".replace("@MACOS_MIN@", MACOS_MIN))
     write(dest / "build.rs", """fn main() {
     let dst = cmake::Config::new(".").profile("Release").build();
     let mut b = cxx_build::bridges(["src/lib.rs"]);
@@ -116,7 +118,7 @@ def sub(path: Path, old: str, new: str) -> None:
 
 def drop_osx(d: Path) -> None:
     sub(d / "CMakeLists.txt",
-        "if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)\n  set(CMAKE_OSX_DEPLOYMENT_TARGET 13.3)\nendif()\n", "")
+        "if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)\n  set(CMAKE_OSX_DEPLOYMENT_TARGET " + MACOS_MIN + ")\nendif()\n", "")
 
 
 # (name, mutation(repo), substring the failure message must contain)
@@ -146,9 +148,12 @@ MUTATIONS = [
      "lacks `build --copt=-ffp-contract=off`"),
     ("bazelrc std", lambda d: sub(d / ".bazelrc", "--cxxopt=-std=c++20", "--cxxopt=-std=c++17"),
      "expected -std=c++20"),
-    ("bazelrc macos min", lambda d: sub(d / ".bazelrc", "build:macos --macos_minimum_os=13.3",
+    ("bazelrc macos min", lambda d: sub(d / ".bazelrc", "build:macos --macos_minimum_os=" + MACOS_MIN,
                                         "build:macos --macos_minimum_os=12.0"),
-     "lacks `build:macos --macos_minimum_os=13.3`"),
+     "lacks `build:macos --macos_minimum_os=" + MACOS_MIN + "`"),
+    ("cmake osx missing", lambda d: drop_osx(d), "lacks CMAKE_OSX_DEPLOYMENT_TARGET " + MACOS_MIN),
+    ("cmake osx old", lambda d: sub(d / "CMakeLists.txt", "CMAKE_OSX_DEPLOYMENT_TARGET " + MACOS_MIN,
+                                    "CMAKE_OSX_DEPLOYMENT_TARGET 13.3"), "expected " + MACOS_MIN),
     ("BUILD march", lambda d: sub(d / "BUILD.bazel", '"-std=c++20"', '"-std=c++20", "-march=native"'),
      "forbidden flag -march="),
     ("BUILD fast-math", lambda d: sub(d / "BUILD.bazel", '"-std=c++20"', '"-std=c++20", "-ffast-math"'),
@@ -159,9 +164,9 @@ MUTATIONS = [
     ("cmake std 17", lambda d: sub(d / "CMakeLists.txt", "CMAKE_CXX_STANDARD 20", "CMAKE_CXX_STANDARD 17"),
      "CMAKE_CXX_STANDARD 17, expected 20"),
     ("cmake osx after project", lambda d: (
-        sub(d / "CMakeLists.txt", "if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)\n  set(CMAKE_OSX_DEPLOYMENT_TARGET 13.3)\nendif()\n", ""),
+        sub(d / "CMakeLists.txt", "if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)\n  set(CMAKE_OSX_DEPLOYMENT_TARGET " + MACOS_MIN + ")\nendif()\n", ""),
         d.joinpath("CMakeLists.txt").write_text(d.joinpath("CMakeLists.txt").read_text()
-                                                + "set(CMAKE_OSX_DEPLOYMENT_TARGET 13.3)\n")),
+                                                + "set(CMAKE_OSX_DEPLOYMENT_TARGET " + MACOS_MIN + ")\n")),
      "set after project()"),
     ("shim no fp-contract", lambda d: sub(d / "build.rs", '    b.flag("-ffp-contract=off");\n', ""),
      'without .flag("-ffp-contract=off")'),
@@ -276,14 +281,13 @@ class CheckerTest(unittest.TestCase):
         write(d / ".github/workflows/release.yml", gen + '    runs-on: "ubuntu-22.04"\n')
         self.assert_exit(run(str(d)), 1, "hard-coded `ubuntu-22.04`")
 
-    def test_cmake_osx_target_optional_until_required(self):
+    def test_cmake_osx_target_optional_when_not_required(self):
         d = self.fixture("osx-missing")
         drop_osx(d)
-        self.assert_exit(run(str(d)), 0, "CONFORMS")
         cfg = self.tmp / "config-osx"
         shutil.copytree(ROOT, cfg, ignore=shutil.ignore_patterns(".git"))
-        sub(cfg / "versions.toml", "cmake_target_required = false", "cmake_target_required = true")
-        self.assert_exit(run("--config", str(cfg), str(d)), 1, "lacks CMAKE_OSX_DEPLOYMENT_TARGET 13.3")
+        sub(cfg / "versions.toml", "cmake_target_required = true", "cmake_target_required = false")
+        self.assert_exit(run("--config", str(cfg), str(d)), 0, "CONFORMS")
 
     def test_self_check_passes(self):
         self.assert_exit(run("--self"), 0, "CONFORMS")
@@ -295,8 +299,16 @@ class CheckerTest(unittest.TestCase):
         self.assert_exit(run("--config", str(cfg), "--self"), 1, "cargo/rust-toolchain.toml channel")
         cfg2 = self.tmp / "config2"
         shutil.copytree(ROOT, cfg2, ignore=shutil.ignore_patterns(".git"))
-        sub(cfg2 / "versions.toml", 'minimum = "13.3"', 'minimum = "14.0"')
+        sub(cfg2 / "versions.toml", f'minimum = "{MACOS_MIN}"', 'minimum = "14.0"')
         self.assert_exit(run("--config", str(cfg2), "--self"), 1, "bazel/common.bazelrc lacks")
+
+    def test_libm_fingerprint_is_deterministic(self):
+        fp = [sys.executable, str(ROOT / "scripts" / "libm-fingerprint.py"), "--n", "2000", "--json"]
+        a = subprocess.run(fp, capture_output=True, text=True)
+        b = subprocess.run(fp, capture_output=True, text=True)
+        self.assertEqual(a.returncode, 0, a.stderr)
+        self.assertEqual(a.stdout, b.stdout)
+        self.assertIn('"all": "', a.stdout)
 
     def test_bad_arguments_exit_2(self):
         self.assert_exit(run(), 2)

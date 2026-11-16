@@ -39,7 +39,8 @@ build --host_per_file_copt=.*external/.*@-w
 # Per-platform sections (build:macos ...) apply automatically on their host.
 common --enable_platform_specific_config
 
-# Oldest macOS the archives run on; matches versions.toml [macos] minimum and CMake's
-# CMAKE_OSX_DEPLOYMENT_TARGET so every native library links into one binary without warnings.
-build:macos --macos_minimum_os=13.3
-build:macos --host_macos_minimum_os=13.3
+# Oldest macOS the archives run on: the macOS release we build and test on. Matches versions.toml
+# [macos] minimum and CMake's CMAKE_OSX_DEPLOYMENT_TARGET, so every native library links into one
+# binary without deployment-target warnings.
+build:macos --macos_minimum_os=15.0
+build:macos --host_macos_minimum_os=15.0

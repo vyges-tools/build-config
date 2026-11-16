@@ -15,6 +15,8 @@ repository either consumes these files or is checked against them in CI.
 | `cargo/rust-toolchain.toml` | The `rust-toolchain.toml` every Rust repository carries. |
 | `scripts/check.py` | Checks a repository against all of the above (read-only). |
 | `scripts/sync-org-vars.sh` | Shows (dry run) or applies the `gh variable set` commands that keep the organisation variables equal to `versions.toml`. |
+| `scripts/libm-fingerprint.py` | Records the host's C library, CPU FMA/AVX2 and an md5 of its libm results on fixed inputs, to store with any reference capture. |
+| `docs/platform-numerics.md` | Dated measurements behind the pinned flags: contraction by target, libm differences between platforms and CPUs. |
 | `tests/` | Checker tests: a conforming fixture must pass and every deliberately wrong variant must fail. |
 
 ## Why the flags matter
@@ -39,6 +41,9 @@ The Cargo release profile (`lto = "fat"`, `codegen-units = 1`) cannot change a c
 rustc does not reassociate or contract floating-point operations at any level — and was adopted
 with before-and-after output comparisons. Packages that ship release binaries (listed in
 `versions.toml` `[cargo] shipped`) also strip symbols; every other package keeps them.
+
+Measurements behind these rules, and what else can move a result (platform libms, glibc's
+CPU-dependent code paths): [docs/platform-numerics.md](docs/platform-numerics.md).
 
 ## Checking a repository
 

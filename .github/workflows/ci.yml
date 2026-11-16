@@ -31,3 +31,5 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: Shell syntax
         run: bash -n scripts/sync-org-vars.sh
+      - name: libm fingerprint of this runner (recorded in the log)
+        run: python3 scripts/libm-fingerprint.py
