@@ -36,6 +36,19 @@ bazelisk = "1.25.0"
 # Oldest macOS our native libraries are built to run on (Bazel --macos_minimum_os,
 # CMake CMAKE_OSX_DEPLOYMENT_TARGET).
 minimum = "13.3"
+# Whether a CMake library must set CMAKE_OSX_DEPLOYMENT_TARGET. False while the minimum itself is
+# under review: a CMakeLists.txt that sets it must still agree with `minimum`.
+cmake_target_required = false
+
+[cargo]
+# Packages whose binaries we ship as release bundles. Only these may add the keys below to the
+# canonical [profile.release]; every other package keeps exactly cargo/profile-release.toml, so
+# engine binaries built for development and gates keep their symbols.
+shipped = ["vyges-suite", "vyges-sdc", "vyges-remap"]
+
+[cargo.shipped_profile_extra]
+# Strip symbols from shipped binaries only (smaller downloads). Cannot change a computed value.
+strip = true
 
 [ci]
 # GitHub-hosted runner OS versions. Workflows never name these directly: they read the

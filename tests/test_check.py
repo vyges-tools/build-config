@@ -114,6 +114,11 @@ def sub(path: Path, old: str, new: str) -> None:
     path.write_text(head + new + tail)
 
 
+def drop_osx(d: Path) -> None:
+    sub(d / "CMakeLists.txt",
+        "if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)\n  set(CMAKE_OSX_DEPLOYMENT_TARGET 13.3)\nendif()\n", "")
+
+
 # (name, mutation(repo), substring the failure message must contain)
 MUTATIONS = [
     ("toolchain channel", lambda d: sub(d / "rust-toolchain.toml", "1.100.0", "1.99.0"),
@@ -121,7 +126,12 @@ MUTATIONS = [
     ("toolchain missing", lambda d: (d / "rust-toolchain.toml").unlink(), "rust-toolchain.toml missing"),
     ("lto thin", lambda d: sub(d / "Cargo.toml", 'lto = "fat"', 'lto = "thin"'), "lto = 'thin'"),
     ("extra strip", lambda d: sub(d / "Cargo.toml", "codegen-units = 1", "codegen-units = 1\nstrip = true"),
-     "extra key strip"),
+     "allowed only in a shipped package"),
+    ("strip false in shipped", lambda d: (sub(d / "Cargo.toml", 'name = "fixture"', 'name = "vyges-suite"'),
+                                          sub(d / "Cargo.toml", "codegen-units = 1", "codegen-units = 1\nstrip = false")),
+     "allowed only in a shipped package"),
+    ("extra key", lambda d: sub(d / "Cargo.toml", "codegen-units = 1", "codegen-units = 1\nopt-level = 2"),
+     "extra key opt-level"),
     ("profile missing", lambda d: sub(d / "Cargo.toml", "[profile.release]", "[profile.dummy]"),
      "has no [profile.release]"),
     ("other profile", lambda d: d.joinpath("Cargo.toml").write_text(
@@ -153,9 +163,6 @@ MUTATIONS = [
         d.joinpath("CMakeLists.txt").write_text(d.joinpath("CMakeLists.txt").read_text()
                                                 + "set(CMAKE_OSX_DEPLOYMENT_TARGET 13.3)\n")),
      "set after project()"),
-    ("cmake osx missing", lambda d: sub(d / "CMakeLists.txt",
-        "if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)\n  set(CMAKE_OSX_DEPLOYMENT_TARGET 13.3)\nendif()\n", ""),
-     "lacks CMAKE_OSX_DEPLOYMENT_TARGET 13.3"),
     ("shim no fp-contract", lambda d: sub(d / "build.rs", '    b.flag("-ffp-contract=off");\n', ""),
      'without .flag("-ffp-contract=off")'),
     ("shim std", lambda d: sub(d / "build.rs", '.std("c++20")', '.std("c++17")'), 'without .std("c++20")'),
@@ -221,6 +228,21 @@ class CheckerTest(unittest.TestCase):
         d = self.fixture("commented")
         sub(d / ".github/workflows/ci.yml", "    steps:", "    # runs-on: ubuntu-latest (old)\n    steps:")
         self.assert_exit(run(str(d)), 0)
+
+    def test_strip_allowed_in_a_shipped_package(self):
+        d = self.fixture("shipped")
+        sub(d / "Cargo.toml", 'name = "fixture"', 'name = "vyges-suite"')
+        sub(d / "Cargo.toml", "codegen-units = 1", "codegen-units = 1\nstrip = true")
+        self.assert_exit(run(str(d)), 0, "CONFORMS")
+
+    def test_cmake_osx_target_optional_until_required(self):
+        d = self.fixture("osx-missing")
+        drop_osx(d)
+        self.assert_exit(run(str(d)), 0, "CONFORMS")
+        cfg = self.tmp / "config-osx"
+        shutil.copytree(ROOT, cfg, ignore=shutil.ignore_patterns(".git"))
+        sub(cfg / "versions.toml", "cmake_target_required = false", "cmake_target_required = true")
+        self.assert_exit(run("--config", str(cfg), str(d)), 1, "lacks CMAKE_OSX_DEPLOYMENT_TARGET 13.3")
 
     def test_self_check_passes(self):
         self.assert_exit(run("--self"), 0, "CONFORMS")

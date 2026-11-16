@@ -14,7 +14,9 @@ Usage:
 Checks, each applied only where the repository has the thing checked:
   toolchain   rust-toolchain.toml exists beside Cargo.toml and equals cargo/rust-toolchain.toml.
   profile     [profile.release] equals cargo/profile-release.toml exactly (no missing, extra or
-              different keys); required when the package builds a binary. No other profile.
+              different keys; a package listed in versions.toml [cargo] shipped may also carry
+              [cargo.shipped_profile_extra]); required when the package builds a binary. No
+              other profile.
   mimalloc    mimalloc / libmimalloc-sys pinned to versions.toml, optional, default features off;
               the Linux target table adds libmimalloc-sys with `override`.
   cargo-cfg   no tracked .cargo/config.toml carrying rustflags.
@@ -22,7 +24,9 @@ Checks, each applied only where the repository has the thing checked:
               .bazelversion equals versions.toml; C++ standard agrees; no forbidden flag in
               .bazelrc, BUILD.bazel, MODULE.bazel or .bzl files.
   cmake       top-level CMakeLists.txt includes cmake/vyges-flags.cmake (an identical copy)
-              before project(), or sets the same values inline; no forbidden flag.
+              before project(), or sets the same values inline (CMAKE_OSX_DEPLOYMENT_TARGET only
+              when versions.toml [macos] cmake_target_required; if set it must agree); no
+              forbidden flag.
   cc-shim     build.rs compiling C++ (cxx_build / cc::Build) sets the C++ standard and
               -ffp-contract=off; a cmake::Config build asks for the Release profile.
   workflows   no hard-coded runner OS version (ubuntu-24.04, macos-latest, ...) outside the
@@ -68,6 +72,9 @@ class Config:
         self.bazelisk = v["bazel"]["bazelisk"]
         self.macos_min = v["macos"]["minimum"]
         self.profile = self.profile_doc.get("profile", {}).get("release", {})
+        self.shipped = set(v.get("cargo", {}).get("shipped", []))
+        self.shipped_extra = v.get("cargo", {}).get("shipped_profile_extra", {})
+        self.cmake_osx_required = v["macos"].get("cmake_target_required", True)
         self.bazel_pairs = bazelrc_pairs(self.bazelrc_text)
 
 
@@ -228,6 +235,8 @@ def check_profile(cfg: Config, repo: Path, cargo: dict, r: Report) -> None:
             r.fail("profile", f"[profile.{name}] is not a standardised profile "
                               f"(cargo/profile-release.toml defines release only)")
     got = profiles.get("release")
+    name = cargo.get("package", {}).get("name", "")
+    shipped = name in cfg.shipped
     if got is None:
         if binary:
             r.fail("profile", "builds a binary but has no [profile.release]; copy "
@@ -235,7 +244,13 @@ def check_profile(cfg: Config, repo: Path, cargo: dict, r: Report) -> None:
     else:
         want = cfg.profile
         for k in sorted(set(got) | set(want)):
-            if k not in want:
+            if k not in want and shipped and got[k] == cfg.shipped_extra.get(k, object()):
+                continue                      # allowed for a shipped package only
+            if k not in want and k in cfg.shipped_extra:
+                r.fail("profile", f"[profile.release] {k} = {got[k]!r} is allowed only in a shipped "
+                                  f"package (versions.toml [cargo] shipped); {name or 'this package'} "
+                                  f"is not one, or the value differs")
+            elif k not in want:
                 r.fail("profile", f"[profile.release] has extra key {k} = {got[k]!r}")
             elif k not in got:
                 r.fail("profile", f"[profile.release] lacks {k} = {want[k]!r}")
@@ -360,8 +375,9 @@ def check_cmake(cfg: Config, repo: Path, r: Report) -> None:
                 r.fail("cmake", f"CMakeLists.txt lacks {what} (cmake/vyges-flags.cmake)")
         osx = re.search(r"set\s*\(\s*CMAKE_OSX_DEPLOYMENT_TARGET\s+\"?([\d.]+)", body, re.I)
         if not osx:
-            r.fail("cmake", f"CMakeLists.txt lacks CMAKE_OSX_DEPLOYMENT_TARGET {cfg.macos_min} "
-                            f"(Bazel libraries build for macOS >= {cfg.macos_min})")
+            if cfg.cmake_osx_required:
+                r.fail("cmake", f"CMakeLists.txt lacks CMAKE_OSX_DEPLOYMENT_TARGET {cfg.macos_min} "
+                                f"(Bazel libraries build for macOS >= {cfg.macos_min})")
         elif osx.group(1) != cfg.macos_min:
             r.fail("cmake", f"CMAKE_OSX_DEPLOYMENT_TARGET {osx.group(1)}, expected {cfg.macos_min}")
         elif osx.start() > proj_at:

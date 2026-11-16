@@ -31,7 +31,8 @@ endif()
 # contracts. add_compile_options (not a C++-only variable) so C sources are covered too.
 add_compile_options(-ffp-contract=off)
 
-# Oldest macOS the archive runs on; matches bazel/common.bazelrc --macos_minimum_os.
+# Oldest macOS the archive runs on; matches bazel/common.bazelrc --macos_minimum_os. (The checker
+# requires an inline CMakeLists.txt to set it only once versions.toml cmake_target_required is on.)
 if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
   set(CMAKE_OSX_DEPLOYMENT_TARGET 13.3)
 endif()

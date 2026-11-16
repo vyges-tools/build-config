@@ -37,7 +37,8 @@ computes, and those are pinned here and checked everywhere:
 
 The Cargo release profile (`lto = "fat"`, `codegen-units = 1`) cannot change a computed value —
 rustc does not reassociate or contract floating-point operations at any level — and was adopted
-with before-and-after output comparisons.
+with before-and-after output comparisons. Packages that ship release binaries (listed in
+`versions.toml` `[cargo] shipped`) also strip symbols; every other package keeps them.
 
 ## Checking a repository
 
@@ -58,6 +59,23 @@ common line, `.bazelversion`, no forbidden flag in Bazel files; `CMakeLists.txt`
 `vyges-flags.cmake` or setting the same values; C++ compiled from `build.rs`; and workflows
 (no hard-coded runner OS version, fallbacks equal to `versions.toml`, pinned Rust toolchain and
 bazelisk, allowed CI profile overrides only).
+
+## Running the check in CI
+
+The `build-config-check` composite action in `vyges-tools/actions` downloads a tagged release of
+this repository and runs the checker on the calling repository:
+
+```yaml
+jobs:
+  build-config:
+    runs-on: ubuntu-${{ vars.VYGES_UBUNTU_VERSION || '24.04' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: vyges-tools/actions/build-config-check@v1.1.0
+```
+
+Both the action and the build-config release it uses are pinned, so a change here reaches a
+repository only when that repository moves its pin.
 
 ## How a repository consumes this
 
