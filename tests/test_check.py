@@ -184,6 +184,17 @@ MUTATIONS = [
                                       "CARGO_PROFILE_RELEASE_OPT_LEVEL"), "not an allowed CI profile override"),
     ("Cargo.toml unparseable", lambda d: sub(d / "Cargo.toml", "[package]", "[package"),
      "cannot parse"),
+    ("dist profile adds lto", lambda d: d.joinpath("Cargo.toml").write_text(
+        d.joinpath("Cargo.toml").read_text() + '\n[profile.dist]\ninherits = "release"\nlto = "thin"\n'),
+     "[profile.dist] = "),
+    ("toolchain missing clippy", lambda d: sub(d / "rust-toolchain.toml", '["clippy"]', '["rustfmt"]'),
+     "[toolchain] components"),
+    ("dist runner old ubuntu", lambda d: write(d / "dist-workspace.toml",
+        '[dist.github-custom-runners]\nx86_64-unknown-linux-gnu = "ubuntu-22.04"\n'),
+     "expected ubuntu-24.04"),
+    ("dist runner latest", lambda d: write(d / "dist-workspace.toml",
+        '[dist.github-custom-runners]\nglobal = "ubuntu-latest"\n'),
+     "expected ubuntu-24.04"),
     ("cargo config rustflags", lambda d: write(d / ".cargo/config.toml",
         '[build]\nrustflags = ["-C", "target-cpu=native"]\n'), "rustflags"),
 ]
@@ -233,6 +244,16 @@ class CheckerTest(unittest.TestCase):
         d = self.fixture("shipped")
         sub(d / "Cargo.toml", 'name = "fixture"', 'name = "vyges-suite"')
         sub(d / "Cargo.toml", "codegen-units = 1", "codegen-units = 1\nstrip = true")
+        self.assert_exit(run(str(d)), 0, "CONFORMS")
+
+    def test_cargo_dist_layout_passes(self):
+        d = self.fixture("dist")
+        sub(d / "rust-toolchain.toml", '["clippy"]', '["rustfmt", "clippy"]')
+        d.joinpath("Cargo.toml").write_text(d.joinpath("Cargo.toml").read_text()
+                                            + '\n[profile.dist]\ninherits = "release"\n')
+        write(d / "dist-workspace.toml", '[dist.github-custom-runners]\n'
+              'global = "ubuntu-24.04"\nx86_64-unknown-linux-gnu = "ubuntu-24.04"\n'
+              'aarch64-unknown-linux-gnu = "ubuntu-24.04-arm"\naarch64-apple-darwin = "macos-15"\n')
         self.assert_exit(run(str(d)), 0, "CONFORMS")
 
     def test_cmake_osx_target_optional_until_required(self):

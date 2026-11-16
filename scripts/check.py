@@ -15,8 +15,8 @@ Checks, each applied only where the repository has the thing checked:
   toolchain   rust-toolchain.toml exists beside Cargo.toml and equals cargo/rust-toolchain.toml.
   profile     [profile.release] equals cargo/profile-release.toml exactly (no missing, extra or
               different keys; a package listed in versions.toml [cargo] shipped may also carry
-              [cargo.shipped_profile_extra]); required when the package builds a binary. No
-              other profile.
+              [cargo.shipped_profile_extra]); required when the package builds a binary. Other
+              profiles only as versions.toml [cargo.allowed_profiles] writes them.
   mimalloc    mimalloc / libmimalloc-sys pinned to versions.toml, optional, default features off;
               the Linux target table adds libmimalloc-sys with `override`.
   cargo-cfg   no tracked .cargo/config.toml carrying rustflags.
@@ -33,6 +33,8 @@ Checks, each applied only where the repository has the thing checked:
               organisation-variable expression, whose fallback equals versions.toml; Rust
               toolchain steps and bazelisk downloads name the versions.toml versions; a CI
               profile override uses exactly versions.toml [ci.test_profile_override].
+  dist        cargo-dist github-custom-runners labels (literals: dist builds its matrix at run
+              time) name the versions.toml runner versions.
 
 Exit status: 0 every check passed, 1 a check failed, 2 bad arguments or unreadable config.
 """
@@ -74,6 +76,7 @@ class Config:
         self.profile = self.profile_doc.get("profile", {}).get("release", {})
         self.shipped = set(v.get("cargo", {}).get("shipped", []))
         self.shipped_extra = v.get("cargo", {}).get("shipped_profile_extra", {})
+        self.allowed_profiles = v.get("cargo", {}).get("allowed_profiles", {})
         self.cmake_osx_required = v["macos"].get("cmake_target_required", True)
         self.bazel_pairs = bazelrc_pairs(self.bazelrc_text)
 
@@ -210,6 +213,8 @@ def check_toolchain(cfg: Config, repo: Path, r: Report) -> None:
             got = {}
         want = cfg.toolchain["toolchain"]
         for k in sorted(set(got) | set(want)):
+            if k == "components" and set(want.get(k, [])) <= set(got.get(k, [])):
+                continue                      # extra components are tools, not build settings
             if got.get(k) != want.get(k):
                 r.fail("toolchain", f"rust-toolchain.toml [toolchain] {k} = {got.get(k)!r}, "
                                     f"expected {want.get(k)!r}")
@@ -230,10 +235,16 @@ def check_profile(cfg: Config, repo: Path, cargo: dict, r: Report) -> None:
     binary = has_binary(repo, cargo)
     if not profiles and not binary:
         return r.done("profile", False)
-    for name in sorted(profiles):
-        if name != "release":
-            r.fail("profile", f"[profile.{name}] is not a standardised profile "
+    for pname in sorted(profiles):
+        if pname == "release":
+            continue
+        allowed = cfg.allowed_profiles.get(pname)
+        if allowed is None:
+            r.fail("profile", f"[profile.{pname}] is not a standardised profile "
                               f"(cargo/profile-release.toml defines release only)")
+        elif profiles[pname] != allowed:
+            r.fail("profile", f"[profile.{pname}] = {profiles[pname]!r}, expected exactly {allowed!r} "
+                              f"(versions.toml [cargo.allowed_profiles])")
     got = profiles.get("release")
     name = cargo.get("package", {}).get("name", "")
     shipped = name in cfg.shipped
@@ -461,6 +472,35 @@ def check_workflows(cfg: Config, repo: Path, r: Report) -> None:
     r.done("workflows", True)
 
 
+def check_dist_runners(cfg: Config, repo: Path, cargo: dict, r: Report) -> None:
+    """cargo-dist builds its job matrix at run time from its own config, where a workflow
+    expression cannot be evaluated, so its runner labels are literals: they must name the
+    versions.toml versions."""
+    tables = []
+    dw = repo / "dist-workspace.toml"
+    if dw.is_file():
+        try:
+            tables.append(("dist-workspace.toml", tomllib.loads(dw.read_text()).get("dist", {})))
+        except tomllib.TOMLDecodeError as e:
+            r.fail("dist", f"cannot parse dist-workspace.toml: {e}")
+    meta = cargo.get("workspace", {}).get("metadata", {}).get("dist")
+    if isinstance(meta, dict):
+        tables.append(("Cargo.toml [workspace.metadata.dist]", meta))
+    if not tables:
+        return r.done("dist", False)
+    for where, dist in tables:
+        for key, val in dist.get("github-custom-runners", {}).items():
+            label = val.get("runner") if isinstance(val, dict) else val
+            m = re.fullmatch(r"(ubuntu|macos)-([\w.]+?)(-arm)?", str(label))
+            if not m:
+                r.fail("dist", f"{where} github-custom-runners.{key} = {label!r} is not an "
+                               f"ubuntu-<version> or macos-<version> label")
+            elif m.group(2) != cfg.ci[m.group(1)]:
+                r.fail("dist", f"{where} github-custom-runners.{key} = {label!r}, expected "
+                               f"{m.group(1)}-{cfg.ci[m.group(1)]}{m.group(3) or ''}")
+    r.done("dist", True)
+
+
 def check_repo(cfg: Config, repo: Path) -> Report:
     r = Report(repo)
     files = repo_files(repo)
@@ -483,6 +523,7 @@ def check_repo(cfg: Config, repo: Path) -> Report:
     check_cmake(cfg, repo, r)
     check_cc_shim(cfg, repo, r)
     check_workflows(cfg, repo, r)
+    check_dist_runners(cfg, repo, cargo, r)
     return r
 
 

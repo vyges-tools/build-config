@@ -10,6 +10,8 @@ schema = 1
 # rustc for CI, release builds and local builds. rust-toolchain.toml in each repository and every
 # `dtolnay/rust-toolchain@<version>` step must name exactly this.
 toolchain = "1.100.0"
+# Components every repository installs. A repository may add more (rustfmt, for one that checks
+# formatting); components are tools and cannot change what is built.
 components = ["clippy"]
 
 [cxx]
@@ -44,7 +46,12 @@ cmake_target_required = false
 # Packages whose binaries we ship as release bundles. Only these may add the keys below to the
 # canonical [profile.release]; every other package keeps exactly cargo/profile-release.toml, so
 # engine binaries built for development and gates keep their symbols.
-shipped = ["vyges-suite", "vyges-sdc", "vyges-remap"]
+shipped = ["vyges-suite", "vyges-sdc", "vyges-remap", "vyges"]
+
+[cargo.allowed_profiles]
+# Profiles other than release that a package may define, each exactly as written here. `dist` is
+# the profile cargo-dist builds release artifacts with; it must add nothing to release.
+dist = { inherits = "release" }
 
 [cargo.shipped_profile_extra]
 # Strip symbols from shipped binaries only (smaller downloads). Cannot change a computed value.
