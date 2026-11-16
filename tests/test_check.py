@@ -256,6 +256,18 @@ class CheckerTest(unittest.TestCase):
               'aarch64-unknown-linux-gnu = "ubuntu-24.04-arm"\naarch64-apple-darwin = "macos-15"\n')
         self.assert_exit(run(str(d)), 0, "CONFORMS")
 
+    def test_toolchain_master_with_computed_input_passes(self):
+        d = self.fixture("master")
+        sub(d / ".github/workflows/ci.yml", "      - uses: dtolnay/rust-toolchain@1.100.0\n",
+            "      - uses: dtolnay/rust-toolchain@master\n        with:\n"
+            "          toolchain: ${{ steps.tc.outputs.toolchain }}\n")
+        self.assert_exit(run(str(d)), 0, "CONFORMS")
+
+    def test_toolchain_master_without_input_fails(self):
+        d = self.fixture("master-bare")
+        sub(d / ".github/workflows/ci.yml", "rust-toolchain@1.100.0", "rust-toolchain@master")
+        self.assert_exit(run(str(d)), 1, "rust-toolchain@master, expected @1.100.0")
+
     def test_cmake_osx_target_optional_until_required(self):
         d = self.fixture("osx-missing")
         drop_osx(d)

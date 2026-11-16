@@ -442,7 +442,8 @@ def check_workflows(cfg: Config, repo: Path, r: Report) -> None:
     for f in flows:
         rel = f.relative_to(repo)
         text = strip_hash_comments(f.read_text())
-        for n, line in enumerate(text.splitlines(), 1):
+        lines = text.splitlines()
+        for n, line in enumerate(lines, 1):
             for os_name, rx in var_rx.items():
                 for m in rx.finditer(line):
                     if m.group(1) != cfg.ci[os_name]:
@@ -454,6 +455,12 @@ def check_workflows(cfg: Config, repo: Path, r: Report) -> None:
                                     f"{m.group(1)}-${{{{ vars.{cfg.ci.get(m.group(1) + '_var', '?')} || "
                                     f"'{cfg.ci.get(m.group(1), '?')}' }}}}")
             for m in re.finditer(r"rust-toolchain@([\w.\-]+)", line):
+                # @master takes the version from a `toolchain:` input; allowed only when the next
+                # lines of the step pass one computed in the workflow (from rust-toolchain.toml,
+                # which the toolchain check pins).
+                if m.group(1) == "master" and any(
+                        re.match(r"\s*toolchain:\s*\$\{\{", nxt) for nxt in lines[n:n + 4]):
+                    continue
                 if m.group(1) != cfg.rust:
                     r.fail("workflows", f"{rel}:{n}: rust-toolchain@{m.group(1)}, expected @{cfg.rust}")
             m = re.search(r"^\s*toolchain:\s*['\"]?([\w.\-]+)", line)
