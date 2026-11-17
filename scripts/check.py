@@ -67,6 +67,7 @@ class Config:
         self.std = v["cxx"]["standard"]                       # "c++20"
         self.std_num = re.sub(r"\D", "", self.std)            # "20"
         self.forbidden = list(v["cxx"]["forbidden_flags"])
+        self.allowed = list(v["cxx"].get("allowed_flags", []))
         self.rust = v["rust"]["toolchain"]
         self.ci = v["ci"]
         self.mim = v["mimalloc"]
@@ -152,8 +153,20 @@ def strip_slash_comments(text: str) -> str:
     return "\n".join(re.sub(r"//.*$", "", line) for line in text.splitlines())
 
 
-def forbidden_hits(text: str, forbidden: list[str]) -> list[str]:
-    return [f for f in forbidden if f in text]
+def forbidden_hits(text: str, forbidden: list[str], allowed: list[str] = ()) -> list[str]:
+    """Each forbidden flag (a prefix) that occurs in `text` other than as an allowed flag.
+
+    An allowed flag counts only as a whole flag: the character after it must not continue a flag
+    name, so `-march=x86-64` is allowed and `-march=x86-64-v3` is still a hit."""
+    hits = []
+    for f in forbidden:
+        for m in re.finditer(re.escape(f), text):
+            rest = text[m.start():]
+            if not any(rest.startswith(a) and not re.match(r"[\w.=+-]", rest[len(a):len(a) + 1])
+                       for a in allowed):
+                hits.append(f)
+                break
+    return hits
 
 
 def bazelrc_pairs(text: str) -> set[tuple[str, str]]:
@@ -342,7 +355,7 @@ def check_bazel(cfg: Config, repo: Path, files: list[Path], r: Report) -> None:
         if f.name in ("BUILD.bazel", "BUILD", "MODULE.bazel", ".bazelrc") or f.suffix == ".bzl":
             body = strip_hash_comments(f.read_text(errors="replace"))
             rel = f.relative_to(repo)
-            for hit in forbidden_hits(body, cfg.forbidden):
+            for hit in forbidden_hits(body, cfg.forbidden, cfg.allowed):
                 r.fail("bazel", f"{rel}: forbidden flag {hit}")
             for m in re.finditer(r"-std=(?:c|gnu)\+\+\w+", body):
                 if m.group(0) != f"-std={cfg.std}":
@@ -393,7 +406,7 @@ def check_cmake(cfg: Config, repo: Path, r: Report) -> None:
             r.fail("cmake", f"CMAKE_OSX_DEPLOYMENT_TARGET {osx.group(1)}, expected {cfg.macos_min}")
         elif osx.start() > proj_at:
             r.fail("cmake", "CMAKE_OSX_DEPLOYMENT_TARGET is set after project(); it has no effect there")
-    for hit in forbidden_hits(body, cfg.forbidden):
+    for hit in forbidden_hits(body, cfg.forbidden, cfg.allowed):
         r.fail("cmake", f"CMakeLists.txt: forbidden flag {hit}")
     m = re.search(r"CMAKE_CXX_STANDARD\s+(\d+)", body)
     if m and m.group(1) != cfg.std_num:
@@ -420,7 +433,7 @@ def check_cc_shim(cfg: Config, repo: Path, r: Report) -> None:
             r.fail("cc-shim", 'build.rs drives CMake without .profile("Release") (the cmake crate '
                               'otherwise picks RelWithDebInfo, -O2, when debug info is on)')
     if applied:
-        for hit in forbidden_hits(body, cfg.forbidden):
+        for hit in forbidden_hits(body, cfg.forbidden, cfg.allowed):
             r.fail("cc-shim", f"build.rs: forbidden flag {hit}")
     r.done("cc-shim", applied)
 
@@ -567,7 +580,7 @@ def check_self(cfg: Config) -> Report:
                 r.fail("self", f"bazel/common.bazelrc `{cmd} {opt}` disagrees with versions.toml")
             if m.group(1) and m.group(1) != cfg.macos_min:
                 r.fail("self", f"bazel/common.bazelrc `{cmd} {opt}` disagrees with versions.toml")
-    for hit in forbidden_hits(strip_hash_comments(cfg.bazelrc_text), cfg.forbidden):
+    for hit in forbidden_hits(strip_hash_comments(cfg.bazelrc_text), cfg.forbidden, cfg.allowed):
         r.fail("self", f"bazel/common.bazelrc carries forbidden flag {hit}")
     cm = strip_hash_comments(cfg.cmake_text)
     for rx, what in [
@@ -578,7 +591,7 @@ def check_self(cfg: Config) -> Report:
     ]:
         if not re.search(rx, cm):
             r.fail("self", f"cmake/vyges-flags.cmake lacks {what} implied by versions.toml")
-    for hit in forbidden_hits(cm, cfg.forbidden):
+    for hit in forbidden_hits(cm, cfg.forbidden, cfg.allowed):
         r.fail("self", f"cmake/vyges-flags.cmake carries forbidden flag {hit}")
     r.done("self", True)
     wf = check_repo(cfg, cfg.root)

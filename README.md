@@ -33,7 +33,9 @@ computes, and those are pinned here and checked everywhere:
   of them. rustc never contracts, so this flag is what keeps C/C++ results equal across targets
   and equal to Rust code computing the same expression.
 - **No `-march`/`-mcpu`, no fast-math family** (`-ffast-math`, `-Ofast`, `-funsafe-math-optimizations`,
-  `-fassociative-math`, `-freciprocal-math`, `-ffp-model=fast`) in any C/C++ we compile.
+  `-fassociative-math`, `-freciprocal-math`, `-ffp-model=fast`) in any C/C++ we compile. One
+  exception, `versions.toml` `allowed_flags`: `-march=x86-64`, the x86-64 baseline ISA (no FMA),
+  which cc-rs passes by default on Linux x86_64. Any other `-march`, including `x86-64-v3`, is refused.
 - **One C++ standard** for a library and everything built from source inside it: abseil's ABI
   depends on it.
 

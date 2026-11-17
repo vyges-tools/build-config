@@ -156,6 +156,13 @@ MUTATIONS = [
                                     "CMAKE_OSX_DEPLOYMENT_TARGET 13.3"), "expected " + MACOS_MIN),
     ("BUILD march", lambda d: sub(d / "BUILD.bazel", '"-std=c++20"', '"-std=c++20", "-march=native"'),
      "forbidden flag -march="),
+    ("BUILD march haswell", lambda d: sub(d / "BUILD.bazel", '"-std=c++20"', '"-std=c++20", "-march=haswell"'),
+     "forbidden flag -march="),
+    # The allowed baseline as a PREFIX of a wider ISA (x86-64-v3 has FMA) is still refused.
+    ("BUILD march x86-64-v3", lambda d: sub(d / "BUILD.bazel", '"-std=c++20"', '"-std=c++20", "-march=x86-64-v3"'),
+     "forbidden flag -march="),
+    ("cmake march native beside baseline", lambda d: sub(d / "CMakeLists.txt", "add_compile_options(-ffp-contract=off)",
+        "add_compile_options(-ffp-contract=off -march=x86-64 -march=native)"), "forbidden flag -march="),
     ("BUILD fast-math", lambda d: sub(d / "BUILD.bazel", '"-std=c++20"', '"-std=c++20", "-ffast-math"'),
      "forbidden flag -ffast-math"),
     ("bazelversion", lambda d: (d / ".bazelversion").write_text("8.0.0\n"), ".bazelversion is '8.0.0'"),
@@ -239,6 +246,14 @@ class CheckerTest(unittest.TestCase):
         d = self.fixture("bad-include", cmake_include=True)
         sub(d / "vyges-flags.cmake", "add_compile_options(-ffp-contract=off)", "")
         self.assert_exit(run(str(d)), 1, "differs from cmake/vyges-flags.cmake")
+
+    def test_baseline_march_is_allowed(self):
+        # `-march=x86-64` is the x86-64 baseline ISA (no FMA), what cc-rs passes on Linux x86_64.
+        d = self.fixture("march-baseline")
+        sub(d / "BUILD.bazel", '"-std=c++20"', '"-std=c++20", "-march=x86-64"')
+        sub(d / "CMakeLists.txt", "add_compile_options(-ffp-contract=off)",
+            "add_compile_options(-ffp-contract=off -march=x86-64)")
+        self.assert_exit(run(str(d)), 0, "CONFORMS")
 
     def test_commented_runner_is_not_a_finding(self):
         d = self.fixture("commented")

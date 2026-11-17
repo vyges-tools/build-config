@@ -28,6 +28,12 @@ forbidden_flags = [
   "-ffp-model=fast", "-fassociative-math", "-freciprocal-math", "-ffp-contract=fast",
   "-ffp-contract=on",
 ]
+# Exact values a forbidden prefix above may still take, each as a whole flag (`-march=x86-64-v3`
+# is NOT `-march=x86-64`). `-march=x86-64` is the x86-64 BASELINE ISA, no FMA, so it cannot fuse
+# a*b+c; it is what cc-rs passes by default on Linux x86_64 (the `cmake` crate forwards it into
+# CMAKE_CXX_FLAGS), so allowing it leaves those compile lines as cc-rs writes them. Any other
+# `-march` (`native`, `haswell`, `x86-64-v3`, ...) can enable FMA and stays refused.
+allowed_flags = ["-march=x86-64"]
 
 [bazel]
 # .bazelversion in each Bazel-built library, and the bazelisk release CI downloads.
